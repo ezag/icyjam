@@ -3,8 +3,11 @@ import sys
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.internet.protocol import Protocol
+from twisted.python import usage
 from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
+from twisted.web.resource import Resource
+from twisted.web.server import Site
 
 class Shoutcast(Protocol):
     MEDIA, METADATA_SIZE, METADATA = range(1, 4)
@@ -62,22 +65,26 @@ class ShoutcastJammer(Shoutcast):
         sys.stdout.write(chunk)
 
 
-if __name__ == '__main__':
-    agent = Agent(reactor)
-    d = agent.request(
-        'GET',
-        sys.argv[1],
-        Headers({'Icy-MetaData': ['1']}),
+class JammedStream(Resource):
+    isLeaf = True
+
+    def render_GET(self, request):
+        return 'Hello World!' 
+
+
+class Options(usage.Options):
+    optParameters = (
+        ('port', 'p', 5000, 'Port to listen', int),
     )
 
-    def cbRequest(response):
-        metaint = int(response.headers.getRawHeaders('Icy-Metaint')[0])
-        response.deliverBody(ShoutcastJammer(metaint))
-        return Deferred()
-    d.addCallback(cbRequest)
 
-    def cbShutdown(ignored):
-        reactor.stop()
-    d.addBoth(cbShutdown)
-
+if __name__ == '__main__':
+    config = Options()
+    try:
+        config.parseOptions()
+    except usage.UsageError, errortext:
+        print '%s: %s' % (sys.argv[0], errortext)
+        print '%s: Try --help for usage details.' % (sys.argv[0])
+        sys.exit(1)
+    reactor.listenTCP(config['port'], Site(JammedStream()))
     reactor.run()
