@@ -7,7 +7,7 @@ from twisted.python import usage
 from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 from twisted.web.resource import Resource
-from twisted.web.server import Site
+from twisted.web.server import NOT_DONE_YET, Site
 
 class Shoutcast(Protocol):
     MEDIA, METADATA_SIZE, METADATA = range(1, 4)
@@ -41,7 +41,7 @@ class Shoutcast(Protocol):
             self.metadata += metadata_part
             self.metadata_bytes_remaining -= len(metadata_part)
             if self.metadata_bytes_remaining == 0:
-                self.metadataReceived(self.parseMetadata(self.metadata))
+                self.metadataReceived(self.parseMetadata(self.metadata), self.metadata)
                 self.media_bytes_remaining = self.metaint
                 self.state = self.MEDIA
 
@@ -56,20 +56,52 @@ class Shoutcast(Protocol):
     def mediaReceived(self, chunk):
         pass
 
-    def metadataReceived(self, headers):
+    def metadataReceived(self, headers, raw_metadata):
         pass
 
 
 class ShoutcastJammer(Shoutcast):
+    def __init__(self, *args, **kwargs):
+        self.cb_media = kwargs.pop('cb_media')
+        Shoutcast.__init__(self, *args, **kwargs)
+
     def mediaReceived(self, chunk):
-        sys.stdout.write(chunk)
+        print 'received {} bytes'.format(len(chunk))
+        self.cb_media(chunk)
+
+    def metadataReceived(self, headers, raw_metadata):
+        print 'metadata {}'.format(headers)
+        self.cb_media(chr(len(raw_metadata)))
+        self.cb_media(raw_metadata)
 
 
 class JammedStream(Resource):
     isLeaf = True
 
     def render_GET(self, request):
-        return 'Hello World!' 
+        print request.uri
+        self.r = request
+        url = request.uri.lstrip('/')
+        request.responseHeaders = Headers({
+            'Content-Type': ['audio/mpeg'],
+            'icy-metaint': ['8192'],
+        })
+        agent = Agent(reactor)
+        d = agent.request('GET', url, Headers({'Icy-MetaData': ['1']}))
+        d.addCallback(self.cbRequest)
+        d.addBoth(self.cbShutdown)
+        return NOT_DONE_YET
+
+    def cbRequest(self, response):
+        metaint = int(response.headers.getRawHeaders('Icy-Metaint')[0])
+        response.deliverBody(ShoutcastJammer(metaint, cb_media=self.cbMedia))
+        return Deferred()
+
+    def cbShutdown(self, request):
+        print request.printTraceback()
+
+    def cbMedia(self, chunk):
+        self.r.write(chunk)
 
 
 class Options(usage.Options):
