@@ -1,1 +1,1 @@
-web: python icyjam.py --port=$PORT
+web: python icyjam.py --host=$HOST --port=$PORT

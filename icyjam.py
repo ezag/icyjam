@@ -6,6 +6,7 @@ from aiohttp import web
 class ArgumentParser(argparse.ArgumentParser):
     def __init__(self):
         super(ArgumentParser, self).__init__()
+        self.add_argument('--host', default='localhost')
         self.add_argument('--port', default=8080, type=int)
 
 async def handle(request):
@@ -21,7 +22,7 @@ async def init(loop, host, port):
 if __name__ == '__main__':
     args = ArgumentParser().parse_args()
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(init(loop, 'localhost', args.port))
+    loop.run_until_complete(init(loop, args.host, args.port))
     try:
         loop.run_forever()
     except KeyboardInterrupt:
